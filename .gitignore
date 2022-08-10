@@ -1,0 +1,5 @@
+build/
+.cache/
+log/
+install
+compile_commands.json

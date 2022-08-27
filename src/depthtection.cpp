@@ -14,17 +14,20 @@ Depthtection::Depthtection() : Node("depthtection") {
   this->declare_parameter<std::string>("camera_topic", "camera");
   this->declare_parameter<std::string>("detection_topic", "detection");
   this->declare_parameter<std::string>("computed_pose_topic", "pose_computed");
+  this->declare_parameter<std::string>("barometer_topic", "air_pressure");
   this->declare_parameter<std::string>("base_frame", "base_link");
   this->declare_parameter<bool>("show_detection", false);
 
   // Read parameters
-  std::string camera_topic, detection_topic, computed_pose_topic;
+  std::string camera_topic, detection_topic, computed_pose_topic, barometer_topic;
 
   this->get_parameter("camera_topic", camera_topic);
   this->get_parameter("detection_topic", detection_topic);
   this->get_parameter("base_frame", base_frame_);
   this->get_parameter("show_detection", show_detection_);
+
   this->get_parameter("computed_pose_topic", computed_pose_topic);
+  this->get_parameter("barometer_topic", barometer_topic);
 
   // Check topic name format
   if (camera_topic.back() == '/') camera_topic.pop_back();
@@ -44,6 +47,9 @@ Depthtection::Depthtection() : Node("depthtection") {
   detection_sub_ = this->create_subscription<vision_msgs::msg::Detection2DArray>(
       detection_topic, rclcpp::SensorDataQoS(),
       std::bind(&Depthtection::detectionCallback, this, _1));
+  pressure_sub_ = this->create_subscription<sensor_msgs::msg::FluidPressure>(
+      barometer_topic, rclcpp::SensorDataQoS(),
+      std::bind(&Depthtection::fluidPressureCallback, this, _1));
 
   // Topic publication
   pose_pub_ = this->create_publisher<as2_msgs::msg::PoseStampedWithID>(computed_pose_topic,

@@ -10,6 +10,7 @@ def generate_launch_description():
         DeclareLaunchArgument('detection_topic', default_value='detector_node/detections'),
         DeclareLaunchArgument('base_frame', default_value='quadrotor_1'),
         DeclareLaunchArgument('show_detection', default_value='true'),
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
         Node(
             package='depthtection',
             executable='depthtection_node',
@@ -18,7 +19,8 @@ def generate_launch_description():
                         {'camera_topic': LaunchConfiguration('camera_topic')},
                         {'detection_topic': LaunchConfiguration('detection_topic')},
                         {'base_frame': LaunchConfiguration('base_frame')},
-                        {'show_detection': LaunchConfiguration('show_detection')}],
+                        {'show_detection': LaunchConfiguration('show_detection')},
+                        {'use_sim_time': LaunchConfiguration('use_sim_time')}],
             output='screen',
             emulate_tty=True
         )

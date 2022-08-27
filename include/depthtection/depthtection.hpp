@@ -72,6 +72,18 @@ class Depthtection : public rclcpp::Node {
    */
   void detectionCallback(const vision_msgs::msg::Detection2DArray::SharedPtr msg);
 
+  /**
+   * @brief FluidPressure callback
+   * @param msg FluidPressure message
+   */
+
+  void fluidPressureCallback(const sensor_msgs::msg::FluidPressure::SharedPtr msg){
+    const auto barHeigh_ = 0.3048*145366.45*(1 - pow(msg->fluid_pressure*0.01/1013.25, 0.190284));
+    //LEFT AS A DIFFERENT VARIABLE FOR DEBUGGING PURPOSES
+    height_estimation_ = barHeigh_;
+    RCLCPP_INFO(this->get_logger(), "Height estimation: %f", height_estimation_);
+  };
+
   std::vector<as2_msgs::msg::PoseStampedWithID> extractEstimatedPose(const cv::Mat& depth_img, const vision_msgs::msg::Detection2DArray& msg);
   
   
@@ -80,6 +92,7 @@ class Depthtection : public rclcpp::Node {
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_img_sub_;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
   rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr detection_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr pressure_sub_;
 
   // Camera calibration information
   cv::Size imgSize_;
@@ -98,6 +111,7 @@ class Depthtection : public rclcpp::Node {
 
   // flags
   bool show_detection_;
+  double height_estimation_;
   cv::Mat rgb_img_, depth_img_;
   vision_msgs::msg::Detection2DArray detection_msg_;
 

@@ -24,7 +24,8 @@
   <depend>vision_msgs</depend>
   <depend>as2_core</depend>
   <depend>as2_msgs</depend>
-  
+  <depend>pcl_ros</depend>
+  <depend>pcl_conversions</depend>
   <export>
     <build_type>ament_cmake</build_type>
   </export>

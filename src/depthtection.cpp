@@ -1,8 +1,18 @@
 #include "depthtection.hpp"
 
+#include <geometry_msgs/msg/detail/pose_stamped__struct.hpp>
 #include <opencv2/core/matx.hpp>
 
-using std::placeholders::_1;
+static void showImage(const std::string &title, const cv::Mat &img) {
+  static std::unordered_map<std::string, bool> window_created;
+  if (window_created.find(title) == window_created.end()) {
+    cv::namedWindow(title, cv::WINDOW_NORMAL);
+    cv::resizeWindow(title, img.cols, img.rows);
+    window_created[title] = true;
+  }
+  cv::imshow(title, img);
+  cv::waitKey(1);
+}
 
 static cv::Mat cropImageWithDetection(const cv::Mat &img,
                                       const vision_msgs::msg::Detection2D &detection);
@@ -37,23 +47,25 @@ Depthtection::Depthtection() : Node("depthtection") {
     RCLCPP_INFO(this->get_logger(), "Show_detection enabled: Subscribing to %s",
                 camera_topic.c_str());
     rgb_img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-        camera_topic + "/image_raw", 10, std::bind(&Depthtection::rgbImageCallback, this, _1));
+        camera_topic + "/image_raw", 10,
+        std::bind(&Depthtection::rgbImageCallback, this, std::placeholders::_1));
   }
   depth_img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-      camera_topic + "/depth", 10, std::bind(&Depthtection::depthImageCallback, this, _1));
+      camera_topic + "/depth", 10,
+      std::bind(&Depthtection::depthImageCallback, this, std::placeholders::_1));
   camera_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       camera_topic + "/camera_info", rclcpp::SensorDataQoS(),
-      std::bind(&Depthtection::cameraInfoCallback, this, _1));
+      std::bind(&Depthtection::cameraInfoCallback, this, std::placeholders::_1));
   detection_sub_ = this->create_subscription<vision_msgs::msg::Detection2DArray>(
       detection_topic, rclcpp::SensorDataQoS(),
-      std::bind(&Depthtection::detectionCallback, this, _1));
-  pressure_sub_ = this->create_subscription<sensor_msgs::msg::FluidPressure>(
+      std::bind(&Depthtection::detectionCallback, this, std::placeholders::_1));
+  /* pressure_sub_ = this->create_subscription<sensor_msgs::msg::FluidPressure>(
       barometer_topic, rclcpp::SensorDataQoS(),
-      std::bind(&Depthtection::fluidPressureCallback, this, _1));
+      std::bind(&Depthtection::fluidPressureCallback, this, std::placeholders::_1)); */
 
   // Topic publication
-  pose_pub_ = this->create_publisher<as2_msgs::msg::PoseStampedWithID>(computed_pose_topic,
-                                                                       rclcpp::QoS(10));
+  pose_pub_ =
+      this->create_publisher<geometry_msgs::msg::PoseStamped>(computed_pose_topic, rclcpp::QoS(10));
 
   // TF listening
   tfCamCatched_ = false;
@@ -105,44 +117,26 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
                   cv::Point(center.x - width / 2, center.y - height / 2), cv::FONT_HERSHEY_SIMPLEX,
                   0.5, cv::Scalar(0, 255, 0), 1);
     }
-    if (! depth_img_.empty()) {
-      if (!haveCalibration_){
+    if (!depth_img_.empty()) {
+      if (!haveCalibration_) {
         RCLCPP_WARN(this->get_logger(), "No camera calibration available");
         return;
       }
 
       auto poses = extractEstimatedPose(depth_img_, *(msg.get()));
       for (auto &pose : poses) {
-        cv::Vec3f point(pose.pose.position.x,
-                        pose.pose.position.y,
-                        pose.pose.position.z);
+        cv::Vec3f point(pose.pose.position.x, pose.pose.position.y, pose.pose.position.z);
         RCLCPP_INFO(this->get_logger(), "Point: %f %f %f", point[0], point[1], point[2]);
-        // // project 3d point into 2d image and draw a circle at the projected points
-        // cv::Vec2i projected_points;
-        // cv::projectPoints(cv::Mat(1, 1, CV_32FC3, point.val), cv::Mat(), cv::Mat(), K_, D_,
-        //                   projected_points);
-        // cv::circle(rgb_img_, projected_points, 5, cv::Scalar(0, 0, 255), -1);
-      } 
-
+      }
     }
-    // window resizable
-    // TODO: IMPROVE THIS
-    static bool first_time_ = true;
-    if (first_time_) {
-      cv::namedWindow("rgb_img", cv::WINDOW_NORMAL);
-      cv::resizeWindow("rgb_img", imgSize_.width, imgSize_.height);
-      first_time_ = false;
-    }
-
-    cv::imshow("rgb_img", rgb_img_);
-    cv::waitKey(1);
+    showImage("RGB Image", rgb_img_);
   }
 }
 
-std::vector<as2_msgs::msg::PoseStampedWithID> Depthtection::extractEstimatedPose(
+std::vector<geometry_msgs::msg::PoseStamped> Depthtection::extractEstimatedPose(
     const cv::Mat &depth_img, const vision_msgs::msg::Detection2DArray &detections) {
-  std::vector<as2_msgs::msg::PoseStampedWithID> poses;
-  as2_msgs::msg::PoseStampedWithID pose;
+  std::vector<geometry_msgs::msg::PoseStamped> poses;
+  geometry_msgs::msg::PoseStamped pose;
   poses.reserve(detections.detections.size());
 
   for (auto &detection : detections.detections) {
@@ -158,7 +152,7 @@ std::vector<as2_msgs::msg::PoseStampedWithID> Depthtection::extractEstimatedPose
     pose.pose.orientation.x = 0;
     pose.pose.orientation.y = 0;
     pose.pose.orientation.z = 0;
-    pose.id = detection.id;
+    // pose.id = detection.id;
     poses.emplace_back(pose);
   }
   return poses;
@@ -181,7 +175,7 @@ cv::Vec3f get_point_from_depth(const cv::Mat &depth_img, const cv::Point &point,
     return cv::Vec3f(0, 0, 0);
   }
   // undistort point using camera calibration
-  
+
   // TODO: check distortion model
   cv::Vec2f point_undistorted;
 
@@ -195,30 +189,88 @@ cv::Vec3f get_point_from_depth(const cv::Mat &depth_img, const cv::Point &point,
   auto z = depth;
 
   return cv::Vec3f(x, y, z);
+}
 
-  // RCLCPP_WARN(rclcpp::get_logger("a"),"depth: %f", depth);
+void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+  // convert to pcl::PointCloud
 
-  // // undistort point
-  // cv::Vec2d point_undistorted;
-  // cv::undistortPoints(cv::Mat(1, 1, CV_32FC2, cv::Scalar(point.x, point.y)), point_undistorted, K, D);
+  auto cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::fromROSMsg(*msg, *cloud);
 
-  // // project point into 3d space
-  // cv::Vec3f point_3d;
-  // point_3d[0] = point_undistorted[0] * depth;
-  // point_3d[1] = point_undistorted[1] * depth;
-  // point_3d[2] = depth;
-  // return point_3d;
+  // filter cloud when z > 0 in earth frame
+  tf2::Stamped<tf2::Transform> earthTf;
+  tf2::Stamped<tf2::Transform> base_frame_Tf;
+  try {
+    geometry_msgs::msg::TransformStamped tf;
+    tf = tfBuffer_->lookupTransform("earth", msg->header.frame_id, tf2::TimePointZero);
+    tf2::fromMsg(tf, earthTf);
+    tf = tfBuffer_->lookupTransform(base_frame_, msg->header.frame_id, tf2::TimePointZero);
+    tf2::fromMsg(tf, base_frame_Tf);
+  } catch (tf2::TransformException &ex) {
+    RCLCPP_ERROR_ONCE(this->get_logger(), "Could not transform %s to %s: %s", "earth",
+                      msg->header.frame_id.c_str(), ex.what());
+    return;
+  }
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZ>);
+  cloud_filtered->points.reserve(cloud->points.size());
 
-  // cv::Mat point_3d =
-  //     (cv::Mat_<double>(4, 1) << (point.x - K.at<double>(0, 2)) * depth / K.at<double>(0, 0),
-  //      (point.y - K.at<double>(1, 2)) * depth / K.at<double>(1, 1), depth, 1);
+  Eigen::Vector3d centroid(0, 0, 0);
 
-  // cv::Mat point_3d_undistorted = K.inv() * point_3d;
-  // point_3d_undistorted /= point_3d_undistorted.at<double>(3, 0);
-  // cv::Mat point_3d_undistorted_normalized = D.inv() * point_3d_undistorted;
-  // point_3d_undistorted_normalized /= point_3d_undistorted_normalized.at<double>(3, 0);
-  // return cv::Vec3f(point_3d_undistorted_normalized.at<double>(0, 0),
-  //                  point_3d_undistorted_normalized.at<double>(1, 0),
-  //                  point_3d_undistorted_normalized.at<double>(2, 0));
+  /* if (!have_visual_pose_estimation_) {
+    return;
+  } */
+
+  for (auto &point : cloud->points) {
+    tf2::Vector3 pointLidar(point.x, point.y, point.z);
+    const tf2::Vector3 pointEarth = earthTf * pointLidar;
+    const tf2::Vector3 pointBase = base_frame_Tf * pointLidar;
+
+    // check NaN values
+    if (!std::isfinite(pointEarth.x()) || !std::isfinite(pointEarth.y()) ||
+        !std::isfinite(pointEarth.z())) {
+      continue;
+    }
+
+    // point must be above the ground and near visual_pose estimation
+    /* const double range_diff = 10.0;
+    if (pointEarth.z() < 0.0 || std::abs(pointEarth.x() - visual_pose_estimation_.pose.position.x)
+    > range_diff || std::abs(pointEarth.y() - visual_pose_estimation_.pose.position.y) >
+    range_diff) { continue;
+    } */
+
+    cloud_filtered->points.emplace_back(pointEarth.x(), pointEarth.y(), pointEarth.z());
+
+    centroid.x() = centroid.x() + pointEarth.x();
+    centroid.y() = centroid.y() + pointEarth.y();
+    centroid.z() = centroid.z() + pointEarth.z();
+  }
+  if (cloud_filtered->points.size() < 20) {
+    return;
+  }
+
+  centroid /= cloud_filtered->points.size();
+
+  if (!std::isfinite(centroid.x()) || !std::isfinite(centroid.y()) ||
+      !std::isfinite(centroid.z())) {
+    return;
+  }
+
+  // create msg PointCloud2 with the cloud_filtered points
+  sensor_msgs::msg::PointCloud2 cloud_filtered_msg;
+  pcl::toROSMsg(*cloud_filtered, cloud_filtered_msg);
+  cloud_filtered_msg.header = msg->header;
+  cloud_filtered_msg.header.frame_id = "earth";
+
+  // publish filtered cloud
+  static auto pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_filtered", 10);
+  pub->publish(cloud_filtered_msg);
+
+  /* have_lidar_pose_estimation_ = true;
+  lidar_pose_estimation_.header = cloud_filtered_msg.header;
+  lidar_pose_estimation_.pose.position.x = centroid.x();
+  lidar_pose_estimation_.pose.position.y = centroid.y();
+  lidar_pose_estimation_.pose.position.z = centroid.z(); */
+  // RCLCPP_INFO(this->get_logger(), "Have lidar pose estimation [%f, %f, %f]", centroid.x(),
+  // centroid.y(), centroid.z());
 }
 

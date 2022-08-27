@@ -31,6 +31,8 @@ tf2_msgs
 tf2_geometry_msgs
 nav_msgs 
 vision_msgs
+pcl_conversions
+pcl_ros
 )
 foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})
   find_package(${DEPENDENCY} REQUIRED)
@@ -43,6 +45,7 @@ include_directories(
 
 set(SOURCE_FILES
   src/depthtection.cpp
+  src/candidate.cpp
 )
 
 add_executable(${PROJECT_NAME}_node src/depthtection_node.cpp ${SOURCE_FILES})

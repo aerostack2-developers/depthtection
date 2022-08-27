@@ -64,8 +64,13 @@ class Depthtection : public rclcpp::Node {
   double height_estimation_;
   cv::Mat rgb_img_, depth_img_;
 
-  typedef std::vector<std::shared_ptr<Candidate>> CandidateVec;
+  std::vector<Candidate::Ptr> candidates_;
+  Candidate::Ptr best_candidate_;
 
+  int n_images_without_detection_ = 0;
+  bool new_detection_ = false;
+
+  std::string target_detection_;
   // Messages
 
   vision_msgs::msg::Detection2DArray detection_msg_;
@@ -121,9 +126,10 @@ class Depthtection : public rclcpp::Node {
     }
   }
 
-  std::vector<geometry_msgs::msg::PoseStamped> extractEstimatedPose(
-      const cv::Mat& depth_img, const vision_msgs::msg::Detection2DArray& msg);
-
+  geometry_msgs::msg::PointStamped extractEstimatedPoint(const cv::Mat& depth_img,
+                                                         const vision_msgs::msg::Detection2D& msg);
+  bool updateCandidateFromPointCloud(const Candidate::Ptr& candidate,
+                                     const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud);
   // Subscribers callbacks
   void rgbImageCallback(const sensor_msgs::msg::Image::SharedPtr msg);
   void depthImageCallback(const sensor_msgs::msg::Image::SharedPtr msg);

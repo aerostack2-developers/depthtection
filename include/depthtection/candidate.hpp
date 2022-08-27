@@ -13,7 +13,7 @@ struct Candidate {
 
   int id;
   float confidence;
-  std::string_view class_name;
+  std::string class_name;
   geometry_msgs::msg::PointStamped point;
 
   Candidate(int id, float confidence, std::string_view class_name,
@@ -23,7 +23,6 @@ struct Candidate {
   Eigen::Vector3d getEigen() const {
     return Eigen::Vector3d(point.point.x, point.point.y, point.point.z);
   }
-
 
   operator geometry_msgs::msg::PointStamped() & { return point; }
   double& x() { return point.point.x; }

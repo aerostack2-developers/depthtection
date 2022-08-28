@@ -31,6 +31,8 @@ new_window 'depthtection' " ros2 launch depthtection depthtection_launch.py \
   camera_topic:=slot6 \
   base_frame:=$drone_namespace \
   show_detection:=true \
+  target_object:=small_blue_box \
+  ground_truth_topic:=box0/ground_truth/pose \
   use_sim_time:=true"
 
 echo -e "Launched drone $drone_namespace. For attaching to the session, run: \n  \t $ tmux a -t $drone_namespace"

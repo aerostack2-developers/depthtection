@@ -9,8 +9,10 @@
 #define __DEPTHTECION_HPP__
 
 #include <algorithm>
-#include <candidate.hpp>
+#include <cmath>
+#include <geometry_msgs/msg/detail/pose_stamped__struct.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/core/matx.hpp>
 #include <opencv2/features2d.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
@@ -19,6 +21,7 @@
 #include <vector>
 
 #include "as2_msgs/msg/pose_stamped_with_id.hpp"
+#include "candidate.hpp"
 #include "cv_bridge/cv_bridge.h"
 #include "nav_msgs/msg/odometry.hpp"
 #include "pcl/common/common.h"
@@ -85,7 +88,7 @@ class Depthtection : public rclcpp::Node {
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_sub_;
   rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr detection_sub_;
-  // rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr pressure_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr ground_truth_sub_;
 
   // Data publishers
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
@@ -97,37 +100,16 @@ class Depthtection : public rclcpp::Node {
   ~Depthtection(void);
 
   private:
-  bool getBestPose(geometry_msgs::msg::PoseStamped& best_pose) {
-    switch (current_phase_) {
-      case Phase::NO_DETECTION:
-        return false;
-      case Phase::VISUAL_DETECTION_WITHOUT_DEPTH: {
-        best_pose = visual_detection_pose_msg_;
-        return true;
-      }
-      case Phase::VISUAL_DETECTION_WITH_DEPTH: {
-        best_pose = visual_depth_detection_pose_msg_;
-        return true;
-      }
-      case Phase::ONLY_DEPTH_DETECTION: {
-        best_pose = only_depth_pose_msg_;
-        return true;
-      }
-      case Phase::TOO_NEAR_TO_DETECT: {
-        return false;
-      }
-    }
-    return false;
-  }
-
-  void pubPose() {
-
-    if (getBestPose(best_pose_msg_)) {
-      pose_pub_->publish(best_pose_msg_);
-    }
-  }
   void pubCandidate(Candidate::Ptr candidate) {
-      pose_pub_->publish(*candidate);
+    pose_pub_->publish(*candidate);
+    if (has_ground_truth_) {
+      Eigen::Vector3d gt_point(ground_truth_pose_msg_.pose.position.x,
+                               ground_truth_pose_msg_.pose.position.y,
+                               ground_truth_pose_msg_.pose.position.z);
+      Eigen::Vector3d candidate_point = candidate->getEigen();
+      double distance = (gt_point - candidate_point).norm();
+      RCLCPP_INFO(get_logger(), "Distance to ground truth: %f", distance);
+    }
   }
 
   geometry_msgs::msg::PointStamped extractEstimatedPoint(const cv::Mat& depth_img,
@@ -140,7 +122,12 @@ class Depthtection : public rclcpp::Node {
   void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
   void detectionCallback(const vision_msgs::msg::Detection2DArray::SharedPtr msg);
   void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
-
+  bool has_ground_truth_ = false;
+  geometry_msgs::msg::PoseStamped ground_truth_pose_msg_;
+  void groundTruthCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+    has_ground_truth_ = true;
+    ground_truth_pose_msg_ = *msg;
+  };
 };
 
 #endif

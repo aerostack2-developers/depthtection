@@ -1,11 +1,6 @@
 #include "depthtection.hpp"
 
-
-#include <cmath>
-#include <geometry_msgs/msg/detail/pose_stamped__struct.hpp>
-#include <opencv2/core/matx.hpp>
-
-#include "candidate.hpp"
+#include <rclcpp/logging.hpp>
 
 static void showImage(const std::string &title, const cv::Mat &img) {
   static std::unordered_map<std::string, bool> window_created;
@@ -22,8 +17,6 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr obtainPointCloudFromDepthCrop(const c
                                                                          const cv::Mat &K,
                                                                          const cv::Mat &D);
 
-static cv::Mat cropImageWithDetection(const cv::Mat &img,
-                                      const vision_msgs::msg::Detection2D &detection);
 static cv::Vec3f get_point_from_depth(const cv::Mat &depth_img, const cv::Point &point,
                                       const cv::Mat &K, const cv::Mat &D);
 
@@ -49,6 +42,8 @@ Depthtection::Depthtection() : Node("depthtection") {
   this->get_parameter("ground_truth_topic", ground_truth_topic);
   this->get_parameter("target_object", target_object_);
 
+  RCLCPP_WARN(this->get_logger(), "TARGET OBJECT: %s", target_object_.c_str());
+
   // Check topic name format
   if (camera_topic.back() == '/') camera_topic.pop_back();
 
@@ -73,6 +68,13 @@ Depthtection::Depthtection() : Node("depthtection") {
   point_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       camera_topic + "/points", rclcpp::SensorDataQoS(),
       std::bind(&Depthtection::pointCloudCallback, this, std::placeholders::_1));
+
+  if (ground_truth_topic != "") {
+    RCLCPP_INFO(this->get_logger(), "GT PROVIDED Subscribing to %s", ground_truth_topic.c_str());
+    ground_truth_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+        ground_truth_topic, rclcpp::SensorDataQoS(),
+        std::bind(&Depthtection::groundTruthCallback, this, std::placeholders::_1));
+  }
 
   // Topic publication
   pose_pub_ =
@@ -139,7 +141,6 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
       return;
     }
     current_phase_ = Phase::VISUAL_DETECTION_WITH_DEPTH;
-    RCLCPP_INFO(this->get_logger(), "Detection %s", detection.id.c_str());
     const auto &hypothesis = detection.results[0].hypothesis;
     auto point = extractEstimatedPoint(depth_img_, detection);
     try {
@@ -172,24 +173,22 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
                                                            hypothesis.class_id, point));
       RCLCPP_INFO(this->get_logger(), "New candidate %s", detection.id.c_str());
     } else {
-
-
       candidate->confidence = (candidate->confidence + hypothesis.score) / 2;
       candidate->point = point;
-      RCLCPP_INFO(this->get_logger(), "Update candidate %s", detection.id.c_str());
+      /* RCLCPP_INFO(this->get_logger(), "Update candidate %s", detection.id.c_str());
       RCLCPP_INFO(this->get_logger(), "Candidate %s", candidate->class_name.c_str());
       RCLCPP_INFO(this->get_logger(), "Candidate point %f %f %f", candidate->point.point.x,
-                  candidate->point.point.y, candidate->point.point.z);
-      
-      if (candidate == best_candidate_){
+                  candidate->point.point.y, candidate->point.point.z); */
+
+      if (candidate == best_candidate_) {
         new_detection_ = true;
         pubCandidate(best_candidate_);
       }
     }
   }
 
-  if (!best_candidate_ && candidates_.size()){
-   best_candidate_ = candidates_[0];
+  if (!best_candidate_ && candidates_.size()) {
+    best_candidate_ = candidates_[0];
   }
 
   if (show_detection_) {
@@ -208,15 +207,6 @@ geometry_msgs::msg::PointStamped Depthtection::extractEstimatedPoint(
   point_msg.point.y = point[1];
   point_msg.point.z = point[2];
   return point_msg;
-}
-
-// Auxiliary function to crop image with detection
-
-cv::Mat cropImageWithDetection(const cv::Mat &img, const vision_msgs::msg::Detection2D &detection) {
-  auto center = detection.bbox.center;
-  auto width = detection.bbox.size_x;
-  auto height = detection.bbox.size_y;
-  return img(cv::Rect(center.x - width / 2, center.y - height / 2, width, height));
 }
 
 // obtain 3D point from depth image
@@ -251,15 +241,14 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
   // find the point with the highest z value
   if (!new_detection_) {
     n_images_without_detection_++;
-  }else{
+  } else {
     new_detection_ = false;
     n_images_without_detection_ = 0;
   }
-  if (n_images_without_detection_ > 5) {
-    RCLCPP_WARN(this->get_logger(), "No detection in %d images", n_images_without_detection_);
+  if (n_images_without_detection_ > 3) {
+    // RCLCPP_WARN(this->get_logger(), "No detection in %d images", n_images_without_detection_);
     current_phase_ = Phase::ONLY_DEPTH_DETECTION;
-  }
-  else {
+  } else {
     current_phase_ = Phase::VISUAL_DETECTION_WITH_DEPTH;
     return false;
   }
@@ -276,14 +265,14 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
   candidate->y() = cloud->points[max_idx].y;
   candidate->z() = cloud->points[max_idx].z;
 
-  RCLCPP_INFO(this->get_logger(), "[PC] Candidate point %f %f %f", candidate->x(), candidate->y(),
-              candidate->z());
+  /* RCLCPP_INFO(this->get_logger(), "[PC] Candidate point %f %f %f", candidate->x(),
+     candidate->y(), candidate->z()); */
 
   return true;
 }
 
 void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  if (current_phase_ != Phase::VISUAL_DETECTION_WITH_DEPTH && 
+  if (current_phase_ != Phase::VISUAL_DETECTION_WITH_DEPTH &&
       current_phase_ != Phase::ONLY_DEPTH_DETECTION) {
     return;
   }
@@ -337,7 +326,7 @@ void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Share
 
   // obtain candidate from point cloud
   if (!updateCandidateFromPointCloud(best_candidate_, cloud_filtered)) {
-    RCLCPP_INFO(this->get_logger(), "Could not update candidate from point cloud");
+    // RCLCPP_INFO(this->get_logger(), "Could not update candidate from point cloud");
     return;
   };
   geometry_msgs::msg::TransformStamped tf;

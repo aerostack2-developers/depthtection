@@ -1,5 +1,6 @@
 #include "depthtection.hpp"
 
+
 #include <cmath>
 #include <geometry_msgs/msg/detail/pose_stamped__struct.hpp>
 #include <opencv2/core/matx.hpp>
@@ -34,6 +35,7 @@ Depthtection::Depthtection() : Node("depthtection") {
   this->declare_parameter<std::string>("ground_truth_topic", "");
   this->declare_parameter<std::string>("base_frame", "base_link");
   this->declare_parameter<bool>("show_detection", false);
+  this->declare_parameter<std::string>("target_object", "small_blue_box");
 
   // Read parameters
   std::string camera_topic, detection_topic, computed_pose_topic, ground_truth_topic;
@@ -45,6 +47,7 @@ Depthtection::Depthtection() : Node("depthtection") {
 
   this->get_parameter("computed_pose_topic", computed_pose_topic);
   this->get_parameter("ground_truth_topic", ground_truth_topic);
+  this->get_parameter("target_object", target_object_);
 
   // Check topic name format
   if (camera_topic.back() == '/') camera_topic.pop_back();
@@ -66,6 +69,10 @@ Depthtection::Depthtection() : Node("depthtection") {
   detection_sub_ = this->create_subscription<vision_msgs::msg::Detection2DArray>(
       detection_topic, rclcpp::SensorDataQoS(),
       std::bind(&Depthtection::detectionCallback, this, std::placeholders::_1));
+
+  point_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      camera_topic + "/points", rclcpp::SensorDataQoS(),
+      std::bind(&Depthtection::pointCloudCallback, this, std::placeholders::_1));
 
   // Topic publication
   pose_pub_ =
@@ -122,13 +129,16 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
                   cv::Point(center.x - width / 2, center.y - height / 2), cv::FONT_HERSHEY_SIMPLEX,
                   0.5, cv::Scalar(0, 255, 0), 1);
     }
-    if (detection.results[0].hypothesis.class_id != target_detection_) {
+    if (detection.results[0].hypothesis.class_id != target_object_) {
       continue;
     }
-    if (!depth_img_.empty() || !haveCalibration_) {
+
+    if (depth_img_.empty() || !haveCalibration_) {
       RCLCPP_WARN(this->get_logger(), "No camera calibration available");
+      current_phase_ = Phase::VISUAL_DETECTION_WITHOUT_DEPTH;
       return;
     }
+    current_phase_ = Phase::VISUAL_DETECTION_WITH_DEPTH;
     RCLCPP_INFO(this->get_logger(), "Detection %s", detection.id.c_str());
     const auto &hypothesis = detection.results[0].hypothesis;
     auto point = extractEstimatedPoint(depth_img_, detection);
@@ -138,6 +148,14 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
       tf = tfBuffer_->lookupTransform("earth", msg->header.frame_id, tf2::TimePointZero);
       tf2::fromMsg(tf, transform);
       tf2::Vector3 v(point.point.x, point.point.y, point.point.z);
+
+      tf2::Matrix3x3 R(0, 0, 1, -1, 0, 0, 0, -1, 0);
+      tf2::Transform camLink, aux;
+      camLink.setIdentity();
+      camLink.setBasis(R);
+      aux = transform * camLink;
+
+      transform.setData(aux);
       v = transform * v;
       point.header.frame_id = "earth";
       point.header.stamp = msg->header.stamp;
@@ -154,13 +172,24 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
                                                            hypothesis.class_id, point));
       RCLCPP_INFO(this->get_logger(), "New candidate %s", detection.id.c_str());
     } else {
+
+
       candidate->confidence = (candidate->confidence + hypothesis.score) / 2;
       candidate->point = point;
       RCLCPP_INFO(this->get_logger(), "Update candidate %s", detection.id.c_str());
       RCLCPP_INFO(this->get_logger(), "Candidate %s", candidate->class_name.c_str());
       RCLCPP_INFO(this->get_logger(), "Candidate point %f %f %f", candidate->point.point.x,
                   candidate->point.point.y, candidate->point.point.z);
+      
+      if (candidate == best_candidate_){
+        new_detection_ = true;
+        pubCandidate(best_candidate_);
+      }
     }
+  }
+
+  if (!best_candidate_ && candidates_.size()){
+   best_candidate_ = candidates_[0];
   }
 
   if (show_detection_) {
@@ -222,8 +251,17 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
   // find the point with the highest z value
   if (!new_detection_) {
     n_images_without_detection_++;
-  } else {
+  }else{
+    new_detection_ = false;
     n_images_without_detection_ = 0;
+  }
+  if (n_images_without_detection_ > 5) {
+    RCLCPP_WARN(this->get_logger(), "No detection in %d images", n_images_without_detection_);
+    current_phase_ = Phase::ONLY_DEPTH_DETECTION;
+  }
+  else {
+    current_phase_ = Phase::VISUAL_DETECTION_WITH_DEPTH;
+    return false;
   }
 
   auto max_z = -std::numeric_limits<float>::max();
@@ -238,11 +276,14 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
   candidate->y() = cloud->points[max_idx].y;
   candidate->z() = cloud->points[max_idx].z;
 
+  RCLCPP_INFO(this->get_logger(), "[PC] Candidate point %f %f %f", candidate->x(), candidate->y(),
+              candidate->z());
+
   return true;
 }
 
 void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  if (current_phase_ == Phase::VISUAL_DETECTION_WITH_DEPTH ||
+  if (current_phase_ != Phase::VISUAL_DETECTION_WITH_DEPTH && 
       current_phase_ != Phase::ONLY_DEPTH_DETECTION) {
     return;
   }
@@ -311,9 +352,8 @@ void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Share
                                                      base_frame_respect_earth_tf.getOrigin().y(),
                                                      base_frame_respect_earth_tf.getOrigin().z());
   const auto distance = (candidate_vec - base_frame_respect_earth_vec).norm();
-  if (distance < 0.5) {
-    current_phase_ = Phase::TOO_NEAR_TO_DETECT;
-    RCLCPP_WARN(this->get_logger(), "PHASE: TOO_NEAR_TO_DETECT");
+  if (distance < 0.2) {
+    RCLCPP_WARN(this->get_logger(), "TOO_NEAR_TO_DETECT");
     return;
   }
 
@@ -326,6 +366,7 @@ void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Share
   // publish filtered cloud
   static auto pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_filtered", 10);
   pub->publish(cloud_filtered_msg);
+  pubCandidate(best_candidate_);
 }
 
 static pcl::PointCloud<pcl::PointXYZ>::Ptr obtainPointCloudFromDepthCrop(const cv::Mat &depth,

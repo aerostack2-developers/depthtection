@@ -70,7 +70,7 @@ class Depthtection : public rclcpp::Node {
   int n_images_without_detection_ = 0;
   bool new_detection_ = false;
 
-  std::string target_detection_;
+  std::string target_object_;
   // Messages
 
   vision_msgs::msg::Detection2DArray detection_msg_;
@@ -121,9 +121,13 @@ class Depthtection : public rclcpp::Node {
   }
 
   void pubPose() {
+
     if (getBestPose(best_pose_msg_)) {
       pose_pub_->publish(best_pose_msg_);
     }
+  }
+  void pubCandidate(Candidate::Ptr candidate) {
+      pose_pub_->publish(*candidate);
   }
 
   geometry_msgs::msg::PointStamped extractEstimatedPoint(const cv::Mat& depth_img,
@@ -136,6 +140,7 @@ class Depthtection : public rclcpp::Node {
   void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
   void detectionCallback(const vision_msgs::msg::Detection2DArray::SharedPtr msg);
   void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+
 };
 
 #endif

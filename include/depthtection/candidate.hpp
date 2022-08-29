@@ -16,12 +16,21 @@ struct Candidate {
   std::string class_name;
   geometry_msgs::msg::PointStamped point;
 
-  Candidate(int id, float confidence, std::string_view class_name,
-            geometry_msgs::msg::PointStamped point)
+  Candidate(int id, float confidence, std::string_view class_name, geometry_msgs::msg::PointStamped point)
       : id(id), confidence(confidence), class_name(class_name), point(point) {}
 
-  Eigen::Vector3d getEigen() const {
-    return Eigen::Vector3d(point.point.x, point.point.y, point.point.z);
+  Eigen::Vector3d getEigen() const { return Eigen::Vector3d(point.point.x, point.point.y, point.point.z); }
+
+  void updatePoint(geometry_msgs::msg::PointStamped point, bool filter = true) {
+    if (filter) {
+      static const float alpha = 0.1;
+      this->point.point.x = alpha * this->point.point.x + (1 - alpha) * point.point.x;
+      this->point.point.y = alpha * this->point.point.y + (1 - alpha) * point.point.y;
+      this->point.point.z = alpha * this->point.point.z + (1 - alpha) * point.point.z;
+      this->point.header = point.header;
+    } else {
+      this->point = point;
+    }
   }
 
   operator geometry_msgs::msg::PointStamped() & { return point; }
@@ -30,10 +39,9 @@ struct Candidate {
   double& z() { return point.point.z; }
 
   operator std::string() const {
-    static auto str =
-        std::string("id: ") + std::to_string(id) + ", confidence: " + std::to_string(confidence) +
-        ", class_name: " + std::string(class_name) + ", point: " + std::to_string(point.point.x) +
-        ", " + std::to_string(point.point.y) + ", " + std::to_string(point.point.z);
+    static auto str = std::string("id: ") + std::to_string(id) + ", confidence: " + std::to_string(confidence) +
+                      ", class_name: " + std::string(class_name) + ", point: " + std::to_string(point.point.x) + ", " +
+                      std::to_string(point.point.y) + ", " + std::to_string(point.point.z);
     return str;
   }
 

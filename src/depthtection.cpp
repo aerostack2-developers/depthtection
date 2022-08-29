@@ -13,12 +13,11 @@ static void showImage(const std::string &title, const cv::Mat &img) {
   cv::waitKey(1);
 }
 
-static pcl::PointCloud<pcl::PointXYZ>::Ptr obtainPointCloudFromDepthCrop(const cv::Mat &depth,
-                                                                         const cv::Mat &K,
+static pcl::PointCloud<pcl::PointXYZ>::Ptr obtainPointCloudFromDepthCrop(const cv::Mat &depth, const cv::Mat &K,
                                                                          const cv::Mat &D);
 
-static cv::Vec3f get_point_from_depth(const cv::Mat &depth_img, const cv::Point &point,
-                                      const cv::Mat &K, const cv::Mat &D);
+static cv::Vec3f get_point_from_depth(const cv::Mat &depth_img, const cv::Point &point, const cv::Mat &K,
+                                      const cv::Mat &D);
 
 Depthtection::Depthtection() : Node("depthtection") {
   // Declare node parameters
@@ -49,15 +48,12 @@ Depthtection::Depthtection() : Node("depthtection") {
 
   // Topic subscription
   if (show_detection_) {
-    RCLCPP_INFO(this->get_logger(), "Show_detection enabled: Subscribing to %s",
-                camera_topic.c_str());
+    RCLCPP_INFO(this->get_logger(), "Show_detection enabled: Subscribing to %s", camera_topic.c_str());
     rgb_img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-        camera_topic + "/image_raw", 10,
-        std::bind(&Depthtection::rgbImageCallback, this, std::placeholders::_1));
+        camera_topic + "/image_raw", 10, std::bind(&Depthtection::rgbImageCallback, this, std::placeholders::_1));
   }
   depth_img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-      camera_topic + "/depth", 10,
-      std::bind(&Depthtection::depthImageCallback, this, std::placeholders::_1));
+      camera_topic + "/depth", 10, std::bind(&Depthtection::depthImageCallback, this, std::placeholders::_1));
   camera_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       camera_topic + "/camera_info", rclcpp::SensorDataQoS(),
       std::bind(&Depthtection::cameraInfoCallback, this, std::placeholders::_1));
@@ -77,8 +73,7 @@ Depthtection::Depthtection() : Node("depthtection") {
   }
 
   // Topic publication
-  pose_pub_ =
-      this->create_publisher<geometry_msgs::msg::PoseStamped>(computed_pose_topic, rclcpp::QoS(10));
+  pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(computed_pose_topic, rclcpp::QoS(10));
 
   // TF listening
   tfCamCatched_ = false;
@@ -124,12 +119,10 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
       auto width = detection.bbox.size_x;
       auto height = detection.bbox.size_y;
       cv::rectangle(rgb_img_, cv::Point(center.x - width / 2, center.y - height / 2),
-                    cv::Point(center.x + width / 2, center.y + height / 2), cv::Scalar(0, 255, 0),
-                    2);
+                    cv::Point(center.x + width / 2, center.y + height / 2), cv::Scalar(0, 255, 0), 2);
       // add text with detection id
-      cv::putText(rgb_img_, std::string(detection.id),
-                  cv::Point(center.x - width / 2, center.y - height / 2), cv::FONT_HERSHEY_SIMPLEX,
-                  0.5, cv::Scalar(0, 255, 0), 1);
+      cv::putText(rgb_img_, std::string(detection.id), cv::Point(center.x - width / 2, center.y - height / 2),
+                  cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
     }
     if (detection.results[0].hypothesis.class_id != target_object_) {
       continue;
@@ -169,12 +162,13 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
     }
     auto candidate = match_candidate(candidates_, hypothesis.class_id, point, 1);
     if (!candidate) {
-      candidates_.emplace_back(std::make_shared<Candidate>(candidates_.size() + 1, hypothesis.score,
-                                                           hypothesis.class_id, point));
+      candidates_.emplace_back(
+          std::make_shared<Candidate>(candidates_.size() + 1, hypothesis.score, hypothesis.class_id, point));
       RCLCPP_INFO(this->get_logger(), "New candidate %s", detection.id.c_str());
     } else {
       candidate->confidence = (candidate->confidence + hypothesis.score) / 2;
-      candidate->point = point;
+      candidate->updatePoint(point);
+      // candidate->point = point;
       /* RCLCPP_INFO(this->get_logger(), "Update candidate %s", detection.id.c_str());
       RCLCPP_INFO(this->get_logger(), "Candidate %s", candidate->class_name.c_str());
       RCLCPP_INFO(this->get_logger(), "Candidate point %f %f %f", candidate->point.point.x,
@@ -196,8 +190,8 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
   }
 }
 
-geometry_msgs::msg::PointStamped Depthtection::extractEstimatedPoint(
-    const cv::Mat &depth_img, const vision_msgs::msg::Detection2D &detection) {
+geometry_msgs::msg::PointStamped Depthtection::extractEstimatedPoint(const cv::Mat &depth_img,
+                                                                     const vision_msgs::msg::Detection2D &detection) {
   geometry_msgs::msg::PointStamped point_msg;
 
   auto center = detection.bbox.center;
@@ -210,8 +204,7 @@ geometry_msgs::msg::PointStamped Depthtection::extractEstimatedPoint(
 }
 
 // obtain 3D point from depth image
-cv::Vec3f get_point_from_depth(const cv::Mat &depth_img, const cv::Point &point, const cv::Mat &K,
-                               const cv::Mat &D) {
+cv::Vec3f get_point_from_depth(const cv::Mat &depth_img, const cv::Point &point, const cv::Mat &K, const cv::Mat &D) {
   double depth = depth_img.at<float>(point.y, point.x);
   if (depth == 0 || depth == std::numeric_limits<float>::infinity()) {
     return cv::Vec3f(0, 0, 0);
@@ -261,9 +254,18 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
       max_idx = i;
     }
   }
-  candidate->x() = cloud->points[max_idx].x;
-  candidate->y() = cloud->points[max_idx].y;
-  candidate->z() = cloud->points[max_idx].z;
+
+  geometry_msgs::msg::PointStamped point_msg;
+  point_msg.point.x = cloud->points[max_idx].x;
+  point_msg.point.y = cloud->points[max_idx].y;
+  point_msg.point.z = cloud->points[max_idx].z;
+  point_msg.header.frame_id = "earth";
+  point_msg.header.stamp = this->now();
+
+  candidate->updatePoint(point_msg);
+  // candidate->x() = cloud->points[max_idx].x;
+  // candidate->y() = cloud->points[max_idx].y;
+  // candidate->z() = cloud->points[max_idx].z;
 
   /* RCLCPP_INFO(this->get_logger(), "[PC] Candidate point %f %f %f", candidate->x(),
      candidate->y(), candidate->z()); */
@@ -272,8 +274,7 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
 }
 
 void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  if (current_phase_ != Phase::VISUAL_DETECTION_WITH_DEPTH &&
-      current_phase_ != Phase::ONLY_DEPTH_DETECTION) {
+  if (current_phase_ != Phase::VISUAL_DETECTION_WITH_DEPTH && current_phase_ != Phase::ONLY_DEPTH_DETECTION) {
     return;
   }
 
@@ -290,8 +291,8 @@ void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Share
     tf = tfBuffer_->lookupTransform(base_frame_, msg->header.frame_id, tf2::TimePointZero);
     tf2::fromMsg(tf, base_frame_Tf);
   } catch (tf2::TransformException &ex) {
-    RCLCPP_ERROR_ONCE(this->get_logger(), "Could not transform %s to %s: %s", "earth",
-                      msg->header.frame_id.c_str(), ex.what());
+    RCLCPP_ERROR_ONCE(this->get_logger(), "Could not transform %s to %s: %s", "earth", msg->header.frame_id.c_str(),
+                      ex.what());
     return;
   }
 
@@ -304,8 +305,7 @@ void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Share
     const tf2::Vector3 pointBase = base_frame_Tf * pointLidar;
 
     // check NaN values
-    if (!std::isfinite(pointEarth.x()) || !std::isfinite(pointEarth.y()) ||
-        !std::isfinite(pointEarth.z())) {
+    if (!std::isfinite(pointEarth.x()) || !std::isfinite(pointEarth.y()) || !std::isfinite(pointEarth.z())) {
       continue;
     }
 
@@ -358,8 +358,7 @@ void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Share
   pubCandidate(best_candidate_);
 }
 
-static pcl::PointCloud<pcl::PointXYZ>::Ptr obtainPointCloudFromDepthCrop(const cv::Mat &depth,
-                                                                         const cv::Mat &K,
+static pcl::PointCloud<pcl::PointXYZ>::Ptr obtainPointCloudFromDepthCrop(const cv::Mat &depth, const cv::Mat &K,
                                                                          const cv::Mat &D) {
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 

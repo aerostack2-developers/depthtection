@@ -23,10 +23,10 @@ struct Candidate {
 
   void updatePoint(geometry_msgs::msg::PointStamped point, bool filter = true) {
     if (filter) {
-      static const float alpha = 0.1;
-      this->point.point.x = alpha * this->point.point.x + (1 - alpha) * point.point.x;
-      this->point.point.y = alpha * this->point.point.y + (1 - alpha) * point.point.y;
-      this->point.point.z = alpha * this->point.point.z + (1 - alpha) * point.point.z;
+      static const float alpha = 0.01;
+      this->point.point.x = alpha * point.point.x + (1 - alpha) * this->point.point.x;
+      this->point.point.y = alpha * point.point.y + (1 - alpha) * this->point.point.y;
+      this->point.point.z = alpha * point.point.z + (1 - alpha) * this->point.point.z;
       this->point.header = point.header;
     } else {
       this->point = point;

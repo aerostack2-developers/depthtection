@@ -107,8 +107,10 @@ class Depthtection : public rclcpp::Node {
                                ground_truth_pose_msg_.pose.position.y,
                                ground_truth_pose_msg_.pose.position.z);
       Eigen::Vector3d candidate_point = candidate->getEigen();
-      double distance = (gt_point - candidate_point).norm();
-      RCLCPP_INFO(get_logger(), "Distance to ground truth: %f", distance);
+      Eigen::Vector3d distance = (gt_point - candidate_point);
+      RCLCPP_INFO(get_logger(), "Distance to ground truth: %f, %f, %f", distance.x(), distance.y(), distance.z());
+      RCLCPP_INFO(get_logger(), "Distance to ground truth: %f", distance.norm());
+
     }
   }
 

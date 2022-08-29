@@ -13,6 +13,7 @@ def generate_launch_description():
         DeclareLaunchArgument('base_frame', default_value='quadrotor_1'),
         DeclareLaunchArgument('show_detection', default_value='true'),
         DeclareLaunchArgument('target_object', default_value='small_blue_box'),
+        DeclareLaunchArgument('computed_pose_topic', default_value='pose_computed'),
         Node(
             package='depthtection',
             executable='depthtection_node',
@@ -23,7 +24,8 @@ def generate_launch_description():
                         {'ground_truth_topic': LaunchConfiguration('ground_truth_topic')},
                         {'base_frame': LaunchConfiguration('base_frame')},
                         {'show_detection': LaunchConfiguration('show_detection')},
-                        {'target_object': LaunchConfiguration('target_object')}],
+                        {'target_object': LaunchConfiguration('target_object')},
+                        {'computed_pose_topic': LaunchConfiguration('computed_pose_topic')}],
             output='screen',
             emulate_tty=True
         )

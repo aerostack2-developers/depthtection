@@ -4,7 +4,13 @@
 #include <Eigen/Dense>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <iostream>
 #include <memory>
+#include <rclcpp/clock.hpp>
+#include <rclcpp/logging.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+#define N_STEPS_PREDICTION 10
 
 struct Candidate {
   typedef std::shared_ptr<Candidate> Ptr;
@@ -16,23 +22,68 @@ struct Candidate {
   std::string class_name;
   geometry_msgs::msg::PointStamped point;
 
-  Candidate(int id, float confidence, std::string_view class_name, geometry_msgs::msg::PointStamped point)
-      : id(id), confidence(confidence), class_name(class_name), point(point) {}
+  std::shared_ptr<rclcpp::Clock> clock;
+
+  Candidate(int id, float confidence, std::string_view class_name, geometry_msgs::msg::PointStamped point,
+            std::shared_ptr<rclcpp::Clock> clock)
+      : id(id), confidence(confidence), class_name(class_name), point(point), clock(clock) {
+    speed = Eigen::Vector3d::Zero();
+  }
 
   Eigen::Vector3d getEigen() const { return Eigen::Vector3d(point.point.x, point.point.y, point.point.z); }
+  Eigen::Vector3d getRawEigen() const {
+    return Eigen::Vector3d(raw_point.point.x, raw_point.point.y, raw_point.point.z);
+  }
+  Eigen::Vector3d getFilteredEigen() const {
+    return Eigen::Vector3d(filtered_point.point.x, filtered_point.point.y, filtered_point.point.z);
+  }
+
+  Eigen::Vector3d speed;
+  int n_measures = 0;
+  geometry_msgs::msg::PointStamped raw_point;
+  geometry_msgs::msg::PointStamped filtered_point;
 
   void updatePoint(geometry_msgs::msg::PointStamped point, bool filter = true) {
+    n_measures += 1;
     if (filter) {
       static const float alpha = 0.01;
       this->point.point.x = alpha * point.point.x + (1 - alpha) * this->point.point.x;
       this->point.point.y = alpha * point.point.y + (1 - alpha) * this->point.point.y;
       this->point.point.z = alpha * point.point.z + (1 - alpha) * this->point.point.z;
       this->point.header = point.header;
+      this->filtered_point = this->point;
+      const auto dt = getDt();
+      estimateSpeed(dt);
+      if (n_measures > 10) {
+        std::cout << "Filtering dt: " << dt << std::endl;
+        this->filtered_point.point.x = this->point.point.x + speed(0) * N_STEPS_PREDICTION * dt;
+        this->filtered_point.point.y = this->point.point.y + speed(1) * N_STEPS_PREDICTION * dt;
+        this->filtered_point.point.z = this->point.point.z + speed(2) * N_STEPS_PREDICTION * dt;
+      }
+
     } else {
       this->point = point;
     }
+    this->raw_point = point;
   }
 
+  double getDt() const {
+    static auto last_time = clock->now();
+    auto now = clock->now();
+    auto dt = (now - last_time).seconds();
+    last_time = now;
+    return dt;
+  }
+
+  void estimateSpeed(double dt) {
+    if (dt <= 0) {
+      return;
+    }
+    static const float alpha = 0.01;
+    static auto last_position = getFilteredEigen();
+    speed = alpha * (getFilteredEigen() - last_position) / dt + (1 - alpha) * speed;
+    std::cout << "speed: " << speed.transpose() << std::endl;
+  }
   operator geometry_msgs::msg::PointStamped() & { return point; }
   double& x() { return point.point.x; }
   double& y() { return point.point.y; }

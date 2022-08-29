@@ -54,17 +54,16 @@ Depthtection::Depthtection() : Node("depthtection") {
   } */
 
   rgb_image_sub_ = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
-    this, camera_topic + "/image_raw",rclcpp::QoS(10).get_rmw_qos_profile());
+      this, camera_topic + "/image_raw", rclcpp::QoS(10).get_rmw_qos_profile());
 
-  depth_img_sub_= std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
-    this, camera_topic + "/depth",rclcpp::QoS(10).get_rmw_qos_profile());
+  depth_img_sub_ = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
+      this, camera_topic + "/depth", rclcpp::QoS(10).get_rmw_qos_profile());
   detection_sub_ = std::make_shared<message_filters::Subscriber<vision_msgs::msg::Detection2DArray>>(
-      this, detection_topic,rclcpp::QoS(10).get_rmw_qos_profile());
-  
-  synchronizer_ = std::make_shared<message_filters::Synchronizer<sync_policy>>(
-      sync_policy(1), *(rgb_image_sub_.get()), *(depth_img_sub_.get()),*(detection_sub_.get()));
-  synchronizer_->registerCallback(&Depthtection::imagesAndDetectionCallback, this);
+      this, detection_topic, rclcpp::QoS(10).get_rmw_qos_profile());
 
+  synchronizer_ = std::make_shared<message_filters::Synchronizer<sync_policy>>(
+      sync_policy(1), *(rgb_image_sub_.get()), *(depth_img_sub_.get()), *(detection_sub_.get()));
+  synchronizer_->registerCallback(&Depthtection::imagesAndDetectionCallback, this);
 
   /* depth_img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
       camera_topic + "/depth", 10, std::bind(&Depthtection::depthImageCallback, this, std::placeholders::_1)); */
@@ -176,8 +175,8 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
     }
     auto candidate = match_candidate(candidates_, hypothesis.class_id, point, 1);
     if (!candidate) {
-      candidates_.emplace_back(
-          std::make_shared<Candidate>(candidates_.size() + 1, hypothesis.score, hypothesis.class_id, point));
+      candidates_.emplace_back(std::make_shared<Candidate>(candidates_.size() + 1, hypothesis.score,
+                                                           hypothesis.class_id, point, this->get_clock()));
       RCLCPP_INFO(this->get_logger(), "New candidate %s", detection.id.c_str());
     } else {
       candidate->confidence = (candidate->confidence + hypothesis.score) / 2;
@@ -261,7 +260,6 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
     // TODO check if the point cloud is in earth frame
     // return false;
   }
-
 
   auto max_z = -std::numeric_limits<float>::max();
   auto max_idx = 0;
@@ -423,11 +421,11 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr obtainPointCloudFromDepthCrop(const c
   return cloud;
 };
 
-
-void Depthtection::imagesAndDetectionCallback(const sensor_msgs::msg::Image::SharedPtr img_ptr, const sensor_msgs::msg::Image::SharedPtr depth_ptr, const vision_msgs::msg::Detection2DArray::SharedPtr detection){
+void Depthtection::imagesAndDetectionCallback(const sensor_msgs::msg::Image::SharedPtr img_ptr,
+                                              const sensor_msgs::msg::Image::SharedPtr depth_ptr,
+                                              const vision_msgs::msg::Detection2DArray::SharedPtr detection) {
   this->rgbImageCallback(img_ptr);
   this->depthImageCallback(depth_ptr);
   this->detectionCallback(detection);
 }
-
 

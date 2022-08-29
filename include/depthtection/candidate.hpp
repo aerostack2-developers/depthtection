@@ -82,6 +82,7 @@ struct Candidate {
     static const float alpha = 0.01;
     static auto last_position = getFilteredEigen();
     speed = alpha * (getFilteredEigen() - last_position) / dt + (1 - alpha) * speed;
+    last_position = getFilteredEigen();
     std::cout << "speed: " << speed.transpose() << std::endl;
   }
   operator geometry_msgs::msg::PointStamped() & { return point; }

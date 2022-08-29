@@ -41,6 +41,10 @@
 #include "tf2_ros/transform_listener.h"
 #include "vision_msgs/msg/detection2_d_array.hpp"
 
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+
 class Depthtection : public rclcpp::Node {
   enum Phase {
     NO_DETECTION,
@@ -83,15 +87,24 @@ class Depthtection : public rclcpp::Node {
   geometry_msgs::msg::PoseStamped visual_depth_detection_pose_msg_;
 
   // Data subscribers
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_img_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_img_sub_;
+  // rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_img_sub_;
+  // rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_img_sub_;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_sub_;
-  rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr detection_sub_;
+  // rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr detection_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr ground_truth_sub_;
 
   // Data publishers
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
+
+  std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> rgb_image_sub_;
+  std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> depth_img_sub_;
+  std::shared_ptr<message_filters::Subscriber<vision_msgs::msg::Detection2DArray>> detection_sub_;
+
+  // typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, vision_msgs::msg::Detection2DArray> sync_policy;
+  typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, vision_msgs::msg::Detection2DArray> sync_policy;
+  std::shared_ptr<message_filters::Synchronizer<sync_policy>> synchronizer_;
+
 
   // Methods
 
@@ -128,6 +141,9 @@ class Depthtection : public rclcpp::Node {
     has_ground_truth_ = true;
     ground_truth_pose_msg_ = *msg;
   };
+
+
+  void imagesAndDetectionCallback(const sensor_msgs::msg::Image::SharedPtr img_ptr, const sensor_msgs::msg::Image::SharedPtr depth_ptr, const vision_msgs::msg::Detection2DArray::SharedPtr detection);
 };
 
 #endif

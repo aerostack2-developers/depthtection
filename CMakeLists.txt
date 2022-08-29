@@ -33,6 +33,7 @@ nav_msgs
 vision_msgs
 pcl_conversions
 pcl_ros
+message_filters
 )
 foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})
   find_package(${DEPENDENCY} REQUIRED)

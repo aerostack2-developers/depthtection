@@ -47,20 +47,34 @@ Depthtection::Depthtection() : Node("depthtection") {
   if (camera_topic.back() == '/') camera_topic.pop_back();
 
   // Topic subscription
-  if (show_detection_) {
+  /* if (show_detection_) {
     RCLCPP_INFO(this->get_logger(), "Show_detection enabled: Subscribing to %s", camera_topic.c_str());
     rgb_img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
         camera_topic + "/image_raw", 10, std::bind(&Depthtection::rgbImageCallback, this, std::placeholders::_1));
-  }
-  depth_img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-      camera_topic + "/depth", 10, std::bind(&Depthtection::depthImageCallback, this, std::placeholders::_1));
+  } */
+
+  rgb_image_sub_ = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
+    this, camera_topic + "/image_raw",rclcpp::QoS(10).get_rmw_qos_profile());
+
+  depth_img_sub_= std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
+    this, camera_topic + "/depth",rclcpp::QoS(10).get_rmw_qos_profile());
+  detection_sub_ = std::make_shared<message_filters::Subscriber<vision_msgs::msg::Detection2DArray>>(
+      this, detection_topic,rclcpp::QoS(10).get_rmw_qos_profile());
+  
+  synchronizer_ = std::make_shared<message_filters::Synchronizer<sync_policy>>(
+      sync_policy(1), *(rgb_image_sub_.get()), *(depth_img_sub_.get()),*(detection_sub_.get()));
+  synchronizer_->registerCallback(&Depthtection::imagesAndDetectionCallback, this);
+
+
+  /* depth_img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+      camera_topic + "/depth", 10, std::bind(&Depthtection::depthImageCallback, this, std::placeholders::_1)); */
   camera_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       camera_topic + "/camera_info", rclcpp::SensorDataQoS(),
       std::bind(&Depthtection::cameraInfoCallback, this, std::placeholders::_1));
-  detection_sub_ = this->create_subscription<vision_msgs::msg::Detection2DArray>(
+  /* detection_sub_ = this->create_subscription<vision_msgs::msg::Detection2DArray>(
       detection_topic, rclcpp::SensorDataQoS(),
       std::bind(&Depthtection::detectionCallback, this, std::placeholders::_1));
-
+ */
   point_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       camera_topic + "/points", rclcpp::SensorDataQoS(),
       std::bind(&Depthtection::pointCloudCallback, this, std::placeholders::_1));
@@ -168,6 +182,7 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
     } else {
       candidate->confidence = (candidate->confidence + hypothesis.score) / 2;
       candidate->updatePoint(point);
+
       // candidate->point = point;
       /* RCLCPP_INFO(this->get_logger(), "Update candidate %s", detection.id.c_str());
       RCLCPP_INFO(this->get_logger(), "Candidate %s", candidate->class_name.c_str());
@@ -381,4 +396,12 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr obtainPointCloudFromDepthCrop(const c
   }
   return cloud;
 };
+
+
+void Depthtection::imagesAndDetectionCallback(const sensor_msgs::msg::Image::SharedPtr img_ptr, const sensor_msgs::msg::Image::SharedPtr depth_ptr, const vision_msgs::msg::Detection2DArray::SharedPtr detection){
+  this->rgbImageCallback(img_ptr);
+  this->depthImageCallback(depth_ptr);
+  this->detectionCallback(detection);
+}
+
 

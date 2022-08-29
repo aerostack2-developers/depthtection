@@ -258,8 +258,10 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
     current_phase_ = Phase::ONLY_DEPTH_DETECTION;
   } else {
     current_phase_ = Phase::VISUAL_DETECTION_WITH_DEPTH;
-    return false;
+    // TODO check if the point cloud is in earth frame
+    // return false;
   }
+
 
   auto max_z = -std::numeric_limits<float>::max();
   auto max_idx = 0;
@@ -270,10 +272,31 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
     }
   }
 
+  double max_z_point = cloud->points[max_idx].z;
+
+  // get the centroid of the pointcloud with z values between max_z and max_z - 0.2
+  auto centroid = cv::Point3f(0, 0, 0);
+  auto n_points = 0;
+  for (auto i = 0; i < cloud->size(); i++) {
+    if (cloud->points[i].z > max_z - 0.1 && cloud->points[i].z < max_z) {
+      centroid.x += cloud->points[i].x;
+      centroid.y += cloud->points[i].y;
+      centroid.z += cloud->points[i].z;
+      n_points++;
+    }
+  }
+  centroid.x /= n_points;
+  centroid.y /= n_points;
+  centroid.z /= n_points;
+  // RCLCPP_INFO(this->get_logger(), "Centroid %f %f %f", centroid.x, centroid.y, centroid.z);
+
   geometry_msgs::msg::PointStamped point_msg;
-  point_msg.point.x = cloud->points[max_idx].x;
+  /* point_msg.point.x = cloud->points[max_idx].x;
   point_msg.point.y = cloud->points[max_idx].y;
-  point_msg.point.z = cloud->points[max_idx].z;
+  point_msg.point.z = cloud->points[max_idx].z; */
+  point_msg.point.x = centroid.x;
+  point_msg.point.y = centroid.y;
+  point_msg.point.z = centroid.z;
   point_msg.header.frame_id = "earth";
   point_msg.header.stamp = this->now();
 
@@ -290,6 +313,9 @@ bool Depthtection::updateCandidateFromPointCloud(const Candidate::Ptr &candidate
 
 void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   if (current_phase_ != Phase::VISUAL_DETECTION_WITH_DEPTH && current_phase_ != Phase::ONLY_DEPTH_DETECTION) {
+    return;
+  }
+  if (!best_candidate_) {
     return;
   }
 

@@ -78,6 +78,7 @@ class Depthtection : public rclcpp::Node {
   bool new_detection_ = false;
 
   std::string target_object_;
+  double same_object_distance_threshold_ = 1;
   // Messages
 
   vision_msgs::msg::Detection2DArray detection_msg_;
@@ -123,8 +124,25 @@ class Depthtection : public rclcpp::Node {
       Eigen::Vector3d distance = (gt_point - candidate_point);
       RCLCPP_INFO(get_logger(), "Distance to ground truth: %f, %f, %f", distance.x(), distance.y(), distance.z());
       RCLCPP_INFO(get_logger(), "Distance to ground truth: %f", distance.norm());
-
     }
+    static auto filtered_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("filtered_pose", 10);
+    static auto filtered_pose_msg_ = std::make_shared<geometry_msgs::msg::PoseStamped>();
+    filtered_pose_msg_->header = candidate->filtered_point.header;
+    filtered_pose_msg_->pose.position = candidate->filtered_point.point;
+    filtered_pub_->publish(*filtered_pose_msg_);
+
+    static auto raw_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("raw_pose", 10);
+    static auto raw_pose_msg_ = std::make_shared<geometry_msgs::msg::PoseStamped>();
+    raw_pose_msg_->header = candidate->raw_point.header;
+    raw_pose_msg_->pose.position = candidate->raw_point.point;
+    raw_pub_->publish(*raw_pose_msg_);
+
+    static auto compensated_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("compensated_pose", 10);
+    static auto compensated_pose_msg_ = std::make_shared<geometry_msgs::msg::PoseStamped>();
+    compensated_pose_msg_->header = candidate->compensated_point.header;
+    compensated_pose_msg_->pose.position = candidate->compensated_point.point;
+    compensated_pub_->publish(*compensated_pose_msg_);
+
   }
 
   geometry_msgs::msg::PointStamped extractEstimatedPoint(const cv::Mat& depth_img,

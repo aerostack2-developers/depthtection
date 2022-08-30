@@ -26,13 +26,14 @@ new_window 'yolo_detector' " ros2 launch yolo_object_detector yolo_object_detect
   config:=./config/darknet_params_objects.yaml \
   camera_topic:=slot6/image_raw"
 
-new_window 'depthtection' " ros2 launch depthtection depthtection_launch.py \
+new_window 'depthtection' " ros2 launch depthtection rviz_depthtection_launch.py \
   namespace:=$drone_namespace \
   camera_topic:=slot6 \
   base_frame:=$drone_namespace \
   show_detection:=true \
   target_object:=small_blue_box \
   ground_truth_topic:=box0/ground_truth/pose \
+  same_object_distance_threshold:=0.4 \
   use_sim_time:=true"
 
 echo -e "Launched drone $drone_namespace. For attaching to the session, run: \n  \t $ tmux a -t $drone_namespace"

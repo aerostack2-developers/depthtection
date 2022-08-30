@@ -28,6 +28,7 @@ Depthtection::Depthtection() : Node("depthtection") {
   this->declare_parameter<std::string>("base_frame", "base_link");
   this->declare_parameter<bool>("show_detection", false);
   this->declare_parameter<std::string>("target_object", "small_blue_box");
+  this->declare_parameter<double>("same_object_distance_threshold", 0.6);
 
   // Read parameters
   std::string camera_topic, detection_topic, computed_pose_topic, ground_truth_topic;
@@ -40,8 +41,11 @@ Depthtection::Depthtection() : Node("depthtection") {
   this->get_parameter("computed_pose_topic", computed_pose_topic);
   this->get_parameter("ground_truth_topic", ground_truth_topic);
   this->get_parameter("target_object", target_object_);
+  this->get_parameter("same_object_distance_threshold", same_object_distance_threshold_);
 
   RCLCPP_WARN(this->get_logger(), "TARGET OBJECT: %s", target_object_.c_str());
+  RCLCPP_WARN(this->get_logger(), "SAME OBJECT DISTANCE THRESHOLD: %f", same_object_distance_threshold_);
+
 
   // Check topic name format
   if (camera_topic.back() == '/') camera_topic.pop_back();
@@ -173,7 +177,14 @@ void Depthtection::detectionCallback(const vision_msgs::msg::Detection2DArray::S
       RCLCPP_WARN(this->get_logger(), "TF exception: %s", ex.what());
       return;
     }
-    auto candidate = match_candidate(candidates_, hypothesis.class_id, point, 1);
+    auto candidate = match_candidate(candidates_, hypothesis.class_id, point,same_object_distance_threshold_);
+    /* static int n_detections = 0;
+    if (n_detections < 5 ) {
+      n_detections += 1;
+      return;
+    } */
+
+    // auto candidate = match_candidate(candidates_, hypothesis.class_id, point);
     if (!candidate) {
       candidates_.emplace_back(std::make_shared<Candidate>(candidates_.size() + 1, hypothesis.score,
                                                            hypothesis.class_id, point, this->get_clock()));
@@ -353,7 +364,7 @@ void Depthtection::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Share
 
     // point must be inside an shpere of radius 0.5m around the best candidate
     // else continue with next point
-    if ((earthPoint - candidate_vec).norm() > 0.5) {
+    if ((earthPoint - candidate_vec).norm() > same_object_distance_threshold_) {
       continue;
     }
     cloud_filtered->points.emplace_back(pointEarth.x(), pointEarth.y(), pointEarth.z());

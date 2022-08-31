@@ -29,9 +29,10 @@ Depthtection::Depthtection() : Node("depthtection") {
   this->declare_parameter<bool>("show_detection", false);
   this->declare_parameter<std::string>("target_object", "small_blue_box");
   this->declare_parameter<double>("same_object_distance_threshold", 0.6);
+  this->declare_parameter<std::string>("phase_topic", "/phase");
 
   // Read parameters
-  std::string camera_topic, detection_topic, computed_pose_topic, ground_truth_topic;
+  std::string camera_topic, detection_topic, computed_pose_topic, ground_truth_topic, phase_topic;
 
   this->get_parameter("camera_topic", camera_topic);
   this->get_parameter("detection_topic", detection_topic);
@@ -42,6 +43,8 @@ Depthtection::Depthtection() : Node("depthtection") {
   this->get_parameter("ground_truth_topic", ground_truth_topic);
   this->get_parameter("target_object", target_object_);
   this->get_parameter("same_object_distance_threshold", same_object_distance_threshold_);
+
+  this->get_parameter("phase_topic", phase_topic);
 
   RCLCPP_WARN(this->get_logger(), "TARGET OBJECT: %s", target_object_.c_str());
   RCLCPP_WARN(this->get_logger(), "SAME OBJECT DISTANCE THRESHOLD: %f", same_object_distance_threshold_);
@@ -97,6 +100,10 @@ Depthtection::Depthtection() : Node("depthtection") {
   tfImuCatched_ = false;
   tfBuffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   tfListener_ = std::make_shared<tf2_ros::TransformListener>(*tfBuffer_);
+
+  // Phase
+  phase_sub_ = this->create_subscription<std_msgs::msg::String>(phase_topic, rclcpp::SensorDataQoS(),
+      std::bind(&Depthtection::phaseCallback, this, std::placeholders::_1));
 }
 
 Depthtection::~Depthtection(void) { cv::destroyAllWindows(); }
@@ -435,8 +442,21 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr obtainPointCloudFromDepthCrop(const c
 void Depthtection::imagesAndDetectionCallback(const sensor_msgs::msg::Image::SharedPtr img_ptr,
                                               const sensor_msgs::msg::Image::SharedPtr depth_ptr,
                                               const vision_msgs::msg::Detection2DArray::SharedPtr detection) {
+  if (!on_running_){
+    return;
+  }
+
   this->rgbImageCallback(img_ptr);
   this->depthImageCallback(depth_ptr);
   this->detectionCallback(detection);
+}
+
+void Depthtection::phaseCallback(const std::shared_ptr<std_msgs::msg::String> msg) {
+  if (msg->data == "small_object_id_success" && !on_running_) {
+    on_running_ = true;
+  } else {
+    on_running_ = false;
+  }
+  return;
 }
 

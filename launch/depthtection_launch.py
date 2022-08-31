@@ -15,6 +15,7 @@ def generate_launch_description():
         DeclareLaunchArgument('target_object', default_value='small_blue_box'),
         DeclareLaunchArgument('computed_pose_topic', default_value='pose_computed'),
         DeclareLaunchArgument('same_object_distance_threshold', default_value='1.0'),
+        DeclareLaunchArgument('phase_topic', default_value='/phase'),
         Node(
             package='depthtection',
             executable='depthtection_node',
@@ -27,6 +28,7 @@ def generate_launch_description():
                         {'show_detection': LaunchConfiguration('show_detection')},
                         {'target_object': LaunchConfiguration('target_object')},
                         {'computed_pose_topic': LaunchConfiguration('computed_pose_topic')},
+                        {'phase_topic': LaunchConfiguration('phase_topic')},
                         {'same_object_distance_threshold': LaunchConfiguration('same_object_distance_threshold')}],
             output='screen',
             emulate_tty=True

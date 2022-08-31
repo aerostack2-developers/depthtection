@@ -40,6 +40,7 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 #include "vision_msgs/msg/detection2_d_array.hpp"
+#include "std_msgs/msg/string.hpp"
 
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
@@ -70,6 +71,7 @@ class Depthtection : public rclcpp::Node {
   bool show_detection_;
   double height_estimation_;
   cv::Mat rgb_img_, depth_img_;
+  bool on_running_ = false;
 
   std::vector<Candidate::Ptr> candidates_;
   Candidate::Ptr best_candidate_;
@@ -94,6 +96,7 @@ class Depthtection : public rclcpp::Node {
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_sub_;
   // rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr detection_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr ground_truth_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr phase_sub_;
 
   // Data publishers
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
@@ -142,7 +145,6 @@ class Depthtection : public rclcpp::Node {
     compensated_pose_msg_->header = candidate->compensated_point.header;
     compensated_pose_msg_->pose.position = candidate->compensated_point.point;
     compensated_pub_->publish(*compensated_pose_msg_);
-
   }
 
   geometry_msgs::msg::PointStamped extractEstimatedPoint(const cv::Mat& depth_img,
@@ -162,6 +164,8 @@ class Depthtection : public rclcpp::Node {
     ground_truth_pose_msg_ = *msg;
   };
 
+
+  void phaseCallback(const std::shared_ptr<std_msgs::msg::String> msg);
 
   void imagesAndDetectionCallback(const sensor_msgs::msg::Image::SharedPtr img_ptr, const sensor_msgs::msg::Image::SharedPtr depth_ptr, const vision_msgs::msg::Detection2DArray::SharedPtr detection);
 };
